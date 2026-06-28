@@ -8,12 +8,23 @@ class RoboCore:
     def build_command(self, cfg):
         cmd = ["robocopy", cfg["src"], cfg["dst"]]
 
-        if cfg.get("mirror"):
+        mode = cfg.get("mode", "copy")
+        if mode == "mirror":
             cmd.append("/MIR")
-        elif cfg.get("subdirs_empty"):
-            cmd.append("/E")
-        else:
-            cmd.append("/S")
+        elif mode == "purge":
+            cmd.append("/PURGE")
+        elif mode == "move":
+            cmd.append("/MOV")
+        elif mode == "moveall":
+            cmd.append("/MOVE")
+
+        # subdirs — mirror and moveall imply /E
+        subdirs = cfg.get("subdirs", "e")
+        if mode not in ("mirror", "moveall"):
+            if subdirs == "e":
+                cmd.append("/E")
+            elif subdirs == "s":
+                cmd.append("/S")
 
         if cfg.get("mt"):
             cmd.append(f"/MT:{cfg['mt']}")
@@ -23,6 +34,12 @@ class RoboCore:
 
         if cfg.get("unbuffered"):
             cmd.append("/J")
+
+        if cfg.get("tee"):
+            cmd.append("/TEE")
+
+        if cfg.get("noprogress"):
+            cmd.append("/NP")
 
         cmd.append(f"/R:{cfg.get('retries', 2)}")
         cmd.append(f"/W:{cfg.get('wait', 1)}")
