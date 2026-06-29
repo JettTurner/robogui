@@ -5,12 +5,13 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QLineEdit,
     QFileDialog, QTextEdit,
     QCheckBox, QSpinBox, QButtonGroup,
-    QFrame, QScrollArea, QComboBox
+    QFrame, QScrollArea, QComboBox, QStackedWidget
 )
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from core import RoboCore
+from presets import PresetsPage
 
 
 def resource_path(relative):
@@ -260,29 +261,38 @@ class SegmentedButtons(QWidget):
         self.setLayout(layout)
 
 
-class RoboGUI(QMainWindow):
-    def __init__(self):
+class AdvancedPage(QWidget):
+    go_back = pyqtSignal()
+
+    def __init__(self, core):
         super().__init__()
-
-        self.setWindowTitle("RoboGUI - Robocopy Manager")
-        self.resize(1050, 760)
-        self.setStyleSheet(DARK_CSS)
-
-        icon_path = resource_path("..\\icon\\robogui.ico")
-        if os.path.exists(icon_path):
-            self.setWindowIcon(QIcon(icon_path))
-
-        self.core = RoboCore()
-
+        self.core = core
         self._build_ui()
 
     def _build_ui(self):
-        root = QWidget()
-        self.setCentralWidget(root)
-
         main = QVBoxLayout()
         main.setSpacing(8)
         main.setContentsMargins(12, 12, 12, 12)
+
+        # -----------------------------
+        # HEADER
+        # -----------------------------
+        header_row = QHBoxLayout()
+        back_btn = QPushButton("\u2190 Presets")
+        back_btn.setToolTip("Go back to preset selection")
+        back_btn.setStyleSheet(
+            "QPushButton { background-color: #2d2d2d; color: #569cd6; border: 1px solid #3c3c3c; "
+            "padding: 4px 12px; font-size: 12px; }"
+            "QPushButton:hover { background-color: #383838; }"
+        )
+        back_btn.clicked.connect(self.go_back.emit)
+        header_row.addWidget(back_btn)
+        header_row.addSpacing(12)
+        header_label = QLabel("Advanced Mode")
+        header_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #d4d4d4;")
+        header_row.addWidget(header_label)
+        header_row.addStretch()
+        main.addLayout(header_row)
 
         # -----------------------------
         # PATHS GROUP
@@ -331,7 +341,7 @@ class RoboGUI(QMainWindow):
         # ============================================================
         # MODE & PERFORMANCE (EXPANDED)
         # ============================================================
-        self.basic = CollapsibleBox("Mode && Performance", expanded=True)
+        self.basic = CollapsibleBox("Mode && Performance", expanded=False)
         self.basic.toggle_btn.setToolTip("Core copy mode, subdirectory handling, thread count, and retry settings")
 
         self.mode_btns = SegmentedButtons(
@@ -990,20 +1000,21 @@ class RoboGUI(QMainWindow):
         self.stop_btn.setObjectName("stopBtn")
         self.dry_btn.setObjectName("dryBtn")
 
+        btn_common = "padding: 8px 24px; font-size: 14px; border-radius: 4px; font-weight: bold;"
         self.start_btn.setStyleSheet(
-            "QPushButton { background-color: #1b7a1b; padding: 8px 24px; font-size: 14px; }"
-            "QPushButton:hover { background-color: #228b22; }"
-            "QPushButton:pressed { background-color: #145214; }"
+            f"QPushButton {{ background-color: #0e639c; color: white; border: none; {btn_common} }}"
+            f"QPushButton:hover {{ background-color: #1177bb; }}"
+            f"QPushButton:pressed {{ background-color: #094771; }}"
         )
         self.stop_btn.setStyleSheet(
-            "QPushButton { background-color: #8b1a1a; padding: 8px 24px; font-size: 14px; }"
-            "QPushButton:hover { background-color: #a32424; }"
-            "QPushButton:pressed { background-color: #661313; }"
+            f"QPushButton {{ background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555555; {btn_common} }}"
+            f"QPushButton:hover {{ background-color: #4a4a4a; }}"
+            f"QPushButton:pressed {{ background-color: #2d2d2d; }}"
         )
         self.dry_btn.setStyleSheet(
-            "QPushButton { background-color: #8b6914; padding: 8px 24px; font-size: 14px; }"
-            "QPushButton:hover { background-color: #a37d18; }"
-            "QPushButton:pressed { background-color: #664e0e; }"
+            f"QPushButton {{ background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #555555; {btn_common} }}"
+            f"QPushButton:hover {{ background-color: #3c3c3c; }}"
+            f"QPushButton:pressed {{ background-color: #1e1e1e; }}"
         )
 
         self.start_btn.clicked.connect(self.run)
@@ -1030,7 +1041,7 @@ class RoboGUI(QMainWindow):
 
         main.addWidget(self.log)
 
-        root.setLayout(main)
+        self.setLayout(main)
 
         self._connect_preview_signals()
 
@@ -1071,6 +1082,136 @@ class RoboGUI(QMainWindow):
         self.mode_btns.group.idClicked.connect(self.preview_command)
         self.subdir_btns.group.idClicked.connect(self.preview_command)
         self.preview_command()
+
+    # -----------------------------
+    # LOAD CONFIG (from preset)
+    # -----------------------------
+    def load_config(self, cfg):
+        self.src_input.setText(cfg.get("src", ""))
+        self.dst_input.setText(cfg.get("dst", ""))
+
+        modes = ["copy", "mirror", "purge", "move", "moveall"]
+        mode_val = cfg.get("mode", "copy")
+        if mode_val in modes:
+            idx = modes.index(mode_val)
+            for btn in self.mode_btns.group.buttons():
+                if self.mode_btns.group.id(btn) == idx:
+                    btn.setChecked(True)
+                    break
+
+        subdirs = ["none", "s", "e"]
+        sub_val = cfg.get("subdirs", "e")
+        if sub_val in subdirs:
+            idx = subdirs.index(sub_val)
+            for btn in self.subdir_btns.group.buttons():
+                if self.subdir_btns.group.id(btn) == idx:
+                    btn.setChecked(True)
+                    break
+
+        self.mt.setValue(cfg.get("mt", 16))
+        self.retries.setValue(cfg.get("retries", 2))
+        self.wait.setValue(cfg.get("wait", 1))
+
+        self.chk_z.setChecked(cfg.get("z", False))
+        self.chk_b.setChecked(cfg.get("b", False))
+        self.chk_zb.setChecked(cfg.get("zb", False))
+        self.chk_j.setChecked(cfg.get("j", False))
+        self.chk_efsraw.setChecked(cfg.get("efsraw", False))
+        self.copy_flags.setText(cfg.get("copy_flags", ""))
+        self.dcopy_flags.setText(cfg.get("dcopy_flags", ""))
+        self.chk_sec.setChecked(cfg.get("sec", False))
+        self.chk_copyall.setChecked(cfg.get("copyall", False))
+        self.chk_nocopy.setChecked(cfg.get("nocopy", False))
+        self.chk_secfix.setChecked(cfg.get("secfix", False))
+        self.chk_timfix.setChecked(cfg.get("timfix", False))
+        self.add_attr.setText(cfg.get("add_attr", ""))
+        self.remove_attr.setText(cfg.get("remove_attr", ""))
+        self.chk_create.setChecked(cfg.get("create", False))
+        self.chk_fat.setChecked(cfg.get("fat", False))
+        self.chk_no256.setChecked(cfg.get("no256", False))
+        self.chk_sj.setChecked(cfg.get("sj", False))
+        self.chk_sl.setChecked(cfg.get("sl", False))
+        self.chk_nodcopy.setChecked(cfg.get("nodcopy", False))
+        self.chk_nooffload.setChecked(cfg.get("nooffload", False))
+        self.chk_compress.setChecked(cfg.get("compress", False))
+        self.chk_noclone.setChecked(cfg.get("noclone", False))
+
+        sparse = cfg.get("sparse", "")
+        if sparse == "y":
+            self.sparse_combo.setCurrentIndex(1)
+        elif sparse == "n":
+            self.sparse_combo.setCurrentIndex(2)
+        else:
+            self.sparse_combo.setCurrentIndex(0)
+
+        self.lev.setValue(cfg.get("lev", 0))
+        self.mon.setValue(cfg.get("mon", 0))
+        self.mot.setValue(cfg.get("mot", 0))
+        self.rh.setText(cfg.get("rh", ""))
+        self.chk_pf.setChecked(cfg.get("pf", False))
+        self.ipg.setValue(cfg.get("ipg", 0))
+
+        self.iomaxsize.setText(cfg.get("iomaxsize", ""))
+        self.iorate.setText(cfg.get("iorate", ""))
+        self.threshold.setText(cfg.get("threshold", ""))
+
+        self.chk_archive_a.setChecked(cfg.get("archive_a", False))
+        self.chk_archive_m.setChecked(cfg.get("archive_m", False))
+        self.include_attr.setText(cfg.get("include_attr", ""))
+        self.exclude_attr.setText(cfg.get("exclude_attr", ""))
+        self.exclude_files.setText(cfg.get("exclude_files", ""))
+        self.exclude_dirs.setText(cfg.get("exclude_dirs", ""))
+        self.chk_xc.setChecked(cfg.get("xc", False))
+        self.chk_xn.setChecked(cfg.get("xn", False))
+        self.chk_xo.setChecked(cfg.get("xo", False))
+        self.chk_xx.setChecked(cfg.get("xx", False))
+        self.chk_xl.setChecked(cfg.get("xl", False))
+        self.chk_im.setChecked(cfg.get("im", False))
+        self.chk_is.setChecked(cfg.get("is_same", False))
+        self.chk_it.setChecked(cfg.get("it", False))
+        self.max_size.setValue(cfg.get("max_size", 0))
+        self.min_size.setValue(cfg.get("min_size", 0))
+        self.max_age.setValue(cfg.get("max_age", 0))
+        self.min_age.setValue(cfg.get("min_age", 0))
+        self.max_lad.setValue(cfg.get("max_lad", 0))
+        self.min_lad.setValue(cfg.get("min_lad", 0))
+        self.chk_xj.setChecked(cfg.get("xj", False))
+        self.chk_fft.setChecked(cfg.get("fft", False))
+        self.chk_dst.setChecked(cfg.get("dst_comp", False))
+        self.chk_xjd.setChecked(cfg.get("xjd", False))
+        self.chk_xjf.setChecked(cfg.get("xjf", False))
+
+        self.chk_reg.setChecked(cfg.get("reg", False))
+        self.chk_tbd.setChecked(cfg.get("tbd", False))
+        self.chk_lfsm.setChecked(cfg.get("lfsm", False))
+        self.lfsm_size.setText(cfg.get("lfsm_size", ""))
+
+        self.chk_list.setChecked(cfg.get("list_only", False))
+        self.chk_xreport.setChecked(cfg.get("x_report", False))
+        self.chk_v.setChecked(cfg.get("v", False))
+        self.chk_ts.setChecked(cfg.get("ts", False))
+        self.chk_fp.setChecked(cfg.get("fp", False))
+        self.chk_bytes.setChecked(cfg.get("bytes", False))
+        self.chk_ns.setChecked(cfg.get("ns", False))
+        self.chk_nc.setChecked(cfg.get("nc", False))
+        self.chk_nfl.setChecked(cfg.get("nfl", False))
+        self.chk_ndl.setChecked(cfg.get("ndl", False))
+        self.chk_eta.setChecked(cfg.get("eta", False))
+        self.chk_njh.setChecked(cfg.get("njh", False))
+        self.chk_njs.setChecked(cfg.get("njs", False))
+        self.chk_unicode.setChecked(cfg.get("unicode", False))
+        self.chk_log_tee.setChecked(cfg.get("log_tee", False))
+        self.log_file.setText(cfg.get("log_file", ""))
+        self.log_append_file.setText(cfg.get("log_append_file", ""))
+        self.unilog_file.setText(cfg.get("unilog_file", ""))
+        self.unilog_append_file.setText(cfg.get("unilog_append_file", ""))
+
+        self.job_name.setText(cfg.get("job_name", ""))
+        self.save_name.setText(cfg.get("save_name", ""))
+        self.chk_quit.setChecked(cfg.get("quit", False))
+        self.chk_nosd.setChecked(cfg.get("nosd", False))
+        self.chk_nodd.setChecked(cfg.get("nodd", False))
+        self.if_files.setText(cfg.get("if_files", ""))
 
     # -----------------------------
     # EXECUTION
@@ -1213,3 +1354,55 @@ class RoboGUI(QMainWindow):
         code = self.core.run(cmd, out)
 
         self.log.append(f"\nFinished (code {code})\n")
+
+
+class RoboGUI(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.setWindowTitle("RoboGUI - Robocopy Manager")
+        self.resize(1050, 760)
+        self.setStyleSheet(DARK_CSS)
+
+        icon_path = resource_path("..\\icon\\robogui.ico")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+
+        self.core = RoboCore()
+
+        self.stack = QStackedWidget()
+        self.setCentralWidget(self.stack)
+
+        self.presets_page = PresetsPage(self.core)
+        self.advanced_page = AdvancedPage(self.core)
+
+        self.stack.addWidget(self.presets_page)
+        self.stack.addWidget(self.advanced_page)
+
+        self.presets_page.preset_selected.connect(self._on_preset)
+        self.presets_page.adv_btn.clicked.connect(lambda: self.stack.setCurrentIndex(1))
+        self.advanced_page.go_back.connect(lambda: self.stack.setCurrentIndex(0))
+
+        self._sync_paths()
+
+    def _sync_paths(self):
+        self.presets_page.src_input.textChanged.connect(
+            lambda t: self.advanced_page.src_input.setText(t)
+            if self.advanced_page.src_input.text() != t else None
+        )
+        self.advanced_page.src_input.textChanged.connect(
+            lambda t: self.presets_page.src_input.setText(t)
+            if self.presets_page.src_input.text() != t else None
+        )
+        self.presets_page.dst_input.textChanged.connect(
+            lambda t: self.advanced_page.dst_input.setText(t)
+            if self.advanced_page.dst_input.text() != t else None
+        )
+        self.advanced_page.dst_input.textChanged.connect(
+            lambda t: self.presets_page.dst_input.setText(t)
+            if self.presets_page.dst_input.text() != t else None
+        )
+
+    def _on_preset(self, cfg):
+        self.advanced_page.load_config(cfg)
+        self.stack.setCurrentIndex(1)

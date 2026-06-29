@@ -37,6 +37,9 @@ class RoboCore:
         if cfg.get("j"):
             cmd.append("/J")
 
+        if cfg.get("mt"):
+            cmd.append(f"/MT:{cfg['mt']}")
+
         if cfg.get("efsraw"):
             cmd.append("/EFSRAW")
 
