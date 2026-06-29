@@ -1334,9 +1334,10 @@ class RunPage(QWidget):
 
         self.setLayout(main)
 
-    def set_command(self, cmd_list):
-        self._cmd_list = cmd_list
-        self.cmd_preview.setText(" ".join(cmd_list))
+    def set_config(self, cfg):
+        self._cfg = cfg
+        cmd = self.core.build_command(cfg)
+        self.cmd_preview.setText(" ".join(cmd))
 
     def run(self):
         self.execute(dry=False)
@@ -1349,7 +1350,10 @@ class RunPage(QWidget):
         self.log.append("Stopped process\n")
 
     def execute(self, dry=False):
-        cmd = list(self._cmd_list)
+        cfg = dict(self._cfg)
+        if dry:
+            cfg["dry_run"] = True
+        cmd = self.core.build_command(cfg)
         if not cmd:
             self.log.append("No command to run\n")
             return
@@ -1439,8 +1443,7 @@ class RoboGUI(QMainWindow):
         cfg = dict(self._current_cfg)
         cfg["src"] = self.presets_page.src_input.text()
         cfg["dst"] = self.presets_page.dst_input.text()
-        cmd = self.core.build_command(cfg)
-        self.run_page.set_command(cmd)
+        self.run_page.set_config(cfg)
         self.run_page.log.clear()
         self.stack.setCurrentIndex(1)
 

@@ -44,7 +44,7 @@ PRESETS = [
         "tags": "/E /COPY:DAT /MT:16",
         "cfg": {
             "mode": "copy", "subdirs": "e", "mt": 16,
-            "retries": 2, "wait": 1,
+            "copy_flags": "DAT", "retries": 2, "wait": 1,
         },
     },
     {
@@ -89,7 +89,7 @@ PRESETS = [
         "tags": "/E /COPY:DAT",
         "cfg": {
             "mode": "copy", "subdirs": "e", "mt": 16,
-            "retries": 2, "wait": 1,
+            "copy_flags": "DAT", "retries": 2, "wait": 1,
         },
     },
     {
@@ -120,7 +120,7 @@ PRESETS = [
         "tags": "/MOV /E /COPY:DAT",
         "cfg": {
             "mode": "move", "subdirs": "e",
-            "retries": 2, "wait": 1,
+            "copy_flags": "DAT", "retries": 2, "wait": 1,
         },
     },
 ]
@@ -321,9 +321,3 @@ class PresetsPage(QWidget):
         if path:
             self.dst_input.setText(path)
 
-    def _update_preview(self):
-        cfg = dict(DEFAULT_CFG)
-        cfg["src"] = self.src_input.text()
-        cfg["dst"] = self.dst_input.text()
-        cmd = self.core.build_command(cfg)
-        self.cmd_preview.setText(" ".join(cmd))
