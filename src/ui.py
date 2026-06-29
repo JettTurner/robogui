@@ -954,6 +954,27 @@ class RoboGUI(QMainWindow):
         main.addWidget(scroll)
 
         # -----------------------------
+        # COMMAND PREVIEW
+        # -----------------------------
+        preview_row = QHBoxLayout()
+        preview_row.setSpacing(8)
+        preview_label = QLabel("Command:")
+        preview_label.setStyleSheet("font-weight: bold; color: #569cd6;")
+        preview_row.addWidget(preview_label)
+
+        self.cmd_preview = QLineEdit()
+        self.cmd_preview.setReadOnly(True)
+        self.cmd_preview.setPlaceholderText("Adjust any setting above — the command updates in real time")
+        self.cmd_preview.setToolTip("Generated robocopy command line based on current settings (auto-updates)")
+        self.cmd_preview.setStyleSheet(
+            "QLineEdit { background-color: #1e1e1e; color: #6a9955; border: 1px solid #3c3c3c; "
+            "border-radius: 4px; padding: 5px 8px; font-family: Consolas, monospace; font-size: 12px; }"
+        )
+        preview_row.addWidget(self.cmd_preview, 1)
+
+        main.addLayout(preview_row)
+
+        # -----------------------------
         # ACTIONS (FOOTER)
         # -----------------------------
         actions = QHBoxLayout()
@@ -1011,6 +1032,8 @@ class RoboGUI(QMainWindow):
 
         root.setLayout(main)
 
+        self._connect_preview_signals()
+
     # -----------------------------
     # FILE PICKERS
     # -----------------------------
@@ -1030,6 +1053,26 @@ class RoboGUI(QMainWindow):
             line_edit.setText(path)
 
     # -----------------------------
+    # PREVIEW
+    # -----------------------------
+    def preview_command(self):
+        cfg = self._collect_config(dry=False)
+        cmd = self.core.build_command(cfg)
+        self.cmd_preview.setText(" ".join(cmd))
+
+    def _connect_preview_signals(self):
+        for w in self.findChildren(QLineEdit):
+            w.textChanged.connect(self.preview_command)
+        for w in self.findChildren(QSpinBox):
+            w.valueChanged.connect(self.preview_command)
+        for w in self.findChildren(QCheckBox):
+            w.stateChanged.connect(self.preview_command)
+        self.sparse_combo.currentIndexChanged.connect(self.preview_command)
+        self.mode_btns.group.idClicked.connect(self.preview_command)
+        self.subdir_btns.group.idClicked.connect(self.preview_command)
+        self.preview_command()
+
+    # -----------------------------
     # EXECUTION
     # -----------------------------
     def run(self):
@@ -1042,7 +1085,7 @@ class RoboGUI(QMainWindow):
         self.core.stop()
         self.log.append("Stopped process\n")
 
-    def execute(self, dry=False):
+    def _collect_config(self, dry=False):
         modes = ["copy", "mirror", "purge", "move", "moveall"]
         subdirs = ["none", "s", "e"]
 
@@ -1053,7 +1096,7 @@ class RoboGUI(QMainWindow):
         elif sparse_val == 2:
             sparse = "n"
 
-        cfg = {
+        return {
             "src": self.src_input.text(),
             "dst": self.dst_input.text(),
             "mode": modes[self.mode_btns.group.checkedId()],
@@ -1063,7 +1106,6 @@ class RoboGUI(QMainWindow):
             "wait": self.wait.value(),
             "dry_run": dry,
 
-            # copy options
             "z": self.chk_z.isChecked(),
             "b": self.chk_b.isChecked(),
             "zb": self.chk_zb.isChecked(),
@@ -1095,12 +1137,10 @@ class RoboGUI(QMainWindow):
             "pf": self.chk_pf.isChecked(),
             "ipg": self.ipg.value(),
 
-            # file throttling
             "iomaxsize": self.iomaxsize.text(),
             "iorate": self.iorate.text(),
             "threshold": self.threshold.text(),
 
-            # file selection
             "archive_a": self.chk_archive_a.isChecked(),
             "archive_m": self.chk_archive_m.isChecked(),
             "include_attr": self.include_attr.text(),
@@ -1127,13 +1167,11 @@ class RoboGUI(QMainWindow):
             "xjd": self.chk_xjd.isChecked(),
             "xjf": self.chk_xjf.isChecked(),
 
-            # retry options
             "reg": self.chk_reg.isChecked(),
             "tbd": self.chk_tbd.isChecked(),
             "lfsm": self.chk_lfsm.isChecked(),
             "lfsm_size": self.lfsm_size.text(),
 
-            # logging options
             "list_only": self.chk_list.isChecked(),
             "x_report": self.chk_xreport.isChecked(),
             "v": self.chk_v.isChecked(),
@@ -1154,7 +1192,6 @@ class RoboGUI(QMainWindow):
             "unilog_file": self.unilog_file.text(),
             "unilog_append_file": self.unilog_append_file.text(),
 
-            # job options
             "job_name": self.job_name.text(),
             "save_name": self.save_name.text(),
             "quit": self.chk_quit.isChecked(),
@@ -1163,9 +1200,12 @@ class RoboGUI(QMainWindow):
             "if_files": self.if_files.text(),
         }
 
+    def execute(self, dry=False):
+        cfg = self._collect_config(dry=dry)
         cmd = self.core.build_command(cfg)
 
         self.log.append("Running:\n" + " ".join(cmd) + "\n\n")
+        self.cmd_preview.setText(" ".join(cmd))
 
         def out(line):
             self.log.append(line.strip())
