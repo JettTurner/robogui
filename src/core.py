@@ -289,11 +289,26 @@ class RoboCore:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            bufsize=0
         )
 
-        for line in self.process.stdout:
-            on_output(line)
+        buf = b""
+        while True:
+            ch = self.process.stdout.read(1)
+            if not ch:
+                break
+            if ch == b"\r":
+                on_output(buf.decode("utf-8", errors="replace"), progress=True)
+                buf = b""
+            elif ch == b"\n":
+                if buf:
+                    on_output(buf.decode("utf-8", errors="replace"), progress=False)
+                    buf = b""
+            else:
+                buf += ch
+
+        if buf:
+            on_output(buf.decode("utf-8", errors="replace"), progress=False)
 
         return self.process.wait()
 

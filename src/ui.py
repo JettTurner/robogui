@@ -1348,8 +1348,18 @@ class AdvancedPage(QWidget):
         self.log.append("Running:\n" + " ".join(cmd) + "\n\n")
         self.cmd_preview.setText(" ".join(cmd))
 
-        def out(line):
-            self.log.append(line.strip())
+        def out(text, progress=False):
+            text = text.strip()
+            if not text:
+                return
+            if progress:
+                cursor = self.log.textCursor()
+                cursor.movePosition(cursor.MoveOperation.End)
+                cursor.movePosition(cursor.MoveOperation.StartOfLine, cursor.MoveMode.KeepAnchor)
+                cursor.removeSelectedText()
+                cursor.insertText(text)
+            else:
+                self.log.append(text)
 
         code = self.core.run(cmd, out)
 
