@@ -5,13 +5,14 @@ from PyQt6.QtWidgets import (
     QPushButton, QLabel, QLineEdit,
     QFileDialog, QTextEdit,
     QCheckBox, QSpinBox, QButtonGroup,
-    QFrame, QScrollArea, QComboBox, QStackedWidget
+    QFrame, QScrollArea, QComboBox, QDialog,
+    QStackedWidget
 )
 
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from core import RoboCore
-from presets import PresetsPage
+from presets import PresetsPage, DEFAULT_CFG
 
 
 def resource_path(relative):
@@ -261,71 +262,21 @@ class SegmentedButtons(QWidget):
         self.setLayout(layout)
 
 
-class AdvancedPage(QWidget):
-    go_back = pyqtSignal()
-
-    def __init__(self, core):
-        super().__init__()
+class FullControlsDialog(QDialog):
+    def __init__(self, core, parent=None):
+        super().__init__(parent)
         self.core = core
+        self.setWindowTitle("Full Controls")
+        self.setMinimumWidth(800)
+        self.setMinimumHeight(600)
+        if parent:
+            self.setStyleSheet(parent.styleSheet())
         self._build_ui()
 
     def _build_ui(self):
         main = QVBoxLayout()
         main.setSpacing(8)
         main.setContentsMargins(12, 12, 12, 12)
-
-        # -----------------------------
-        # HEADER
-        # -----------------------------
-        header_row = QHBoxLayout()
-        back_btn = QPushButton("\u2190 Presets")
-        back_btn.setToolTip("Go back to preset selection")
-        back_btn.setStyleSheet(
-            "QPushButton { background-color: #2d2d2d; color: #569cd6; border: 1px solid #3c3c3c; "
-            "padding: 4px 12px; font-size: 12px; }"
-            "QPushButton:hover { background-color: #383838; }"
-        )
-        back_btn.clicked.connect(self.go_back.emit)
-        header_row.addWidget(back_btn)
-        header_row.addSpacing(12)
-        header_label = QLabel("Advanced Mode")
-        header_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #d4d4d4;")
-        header_row.addWidget(header_label)
-        header_row.addStretch()
-        main.addLayout(header_row)
-
-        # -----------------------------
-        # PATHS GROUP
-        # -----------------------------
-        paths_group = QGroupBox("Paths")
-        paths_layout = QHBoxLayout()
-        paths_layout.setSpacing(8)
-
-        self.src_input = QLineEdit()
-        self.src_input.setToolTip("Source directory to copy from")
-        self.dst_input = QLineEdit()
-        self.dst_input.setToolTip("Destination directory to copy to")
-
-        btn_src = QPushButton("Browse")
-        btn_src.setToolTip("Browse for source directory")
-        btn_dst = QPushButton("Browse")
-        btn_dst.setToolTip("Browse for destination directory")
-        btn_src.clicked.connect(self.pick_src)
-        btn_dst.clicked.connect(self.pick_dst)
-
-        arrow = QLabel("  \u2192  ")
-        arrow.setStyleSheet("font-size: 20px; font-weight: bold; color: #569cd6; padding: 0 4px;")
-
-        paths_layout.addWidget(QLabel("Source:"))
-        paths_layout.addWidget(self.src_input, 1)
-        paths_layout.addWidget(btn_src)
-        paths_layout.addWidget(arrow)
-        paths_layout.addWidget(QLabel("Dest:"))
-        paths_layout.addWidget(self.dst_input, 1)
-        paths_layout.addWidget(btn_dst)
-
-        paths_group.setLayout(paths_layout)
-        main.addWidget(paths_group)
 
         # -----------------------------
         # SCROLL AREA
@@ -985,61 +936,20 @@ class AdvancedPage(QWidget):
         main.addLayout(preview_row)
 
         # -----------------------------
-        # ACTIONS (FOOTER)
+        # OK / CANCEL
         # -----------------------------
-        actions = QHBoxLayout()
-
-        self.start_btn = QPushButton("\u25b6  START")
-        self.start_btn.setToolTip("Begin the robocopy operation with current settings")
-        self.stop_btn = QPushButton("\u25a0  STOP")
-        self.stop_btn.setToolTip("Stop the currently running robocopy process")
-        self.dry_btn = QPushButton("\u25c9  DRY RUN")
-        self.dry_btn.setToolTip("Simulate - show what would be copied without actually copying (/L)")
-
-        self.start_btn.setObjectName("startBtn")
-        self.stop_btn.setObjectName("stopBtn")
-        self.dry_btn.setObjectName("dryBtn")
-
-        btn_common = "padding: 8px 24px; font-size: 14px; border-radius: 4px; font-weight: bold;"
-        self.start_btn.setStyleSheet(
-            f"QPushButton {{ background-color: #0e639c; color: white; border: none; {btn_common} }}"
-            f"QPushButton:hover {{ background-color: #1177bb; }}"
-            f"QPushButton:pressed {{ background-color: #094771; }}"
-        )
-        self.stop_btn.setStyleSheet(
-            f"QPushButton {{ background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555555; {btn_common} }}"
-            f"QPushButton:hover {{ background-color: #4a4a4a; }}"
-            f"QPushButton:pressed {{ background-color: #2d2d2d; }}"
-        )
-        self.dry_btn.setStyleSheet(
-            f"QPushButton {{ background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #555555; {btn_common} }}"
-            f"QPushButton:hover {{ background-color: #3c3c3c; }}"
-            f"QPushButton:pressed {{ background-color: #1e1e1e; }}"
-        )
-
-        self.start_btn.clicked.connect(self.run)
-        self.stop_btn.clicked.connect(self.stop)
-        self.dry_btn.clicked.connect(self.dry_run)
-
-        actions.addStretch()
-        actions.addWidget(self.start_btn)
-        actions.addSpacing(8)
-        actions.addWidget(self.stop_btn)
-        actions.addSpacing(8)
-        actions.addWidget(self.dry_btn)
-        actions.addStretch()
-
-        main.addLayout(actions)
-
-        # -----------------------------
-        # LOG
-        # -----------------------------
-        self.log = QTextEdit()
-        self.log.setReadOnly(True)
-        self.log.setMaximumHeight(180)
-        self.log.setToolTip("Output log - robocopy command and results appear here")
-
-        main.addWidget(self.log)
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        self.ok_btn = QPushButton("OK")
+        self.ok_btn.setToolTip("Apply settings and close")
+        self.ok_btn.clicked.connect(self.accept)
+        self.cancel_btn = QPushButton("Cancel")
+        self.cancel_btn.setToolTip("Discard changes")
+        self.cancel_btn.clicked.connect(self.reject)
+        btn_row.addWidget(self.ok_btn)
+        btn_row.addSpacing(8)
+        btn_row.addWidget(self.cancel_btn)
+        main.addLayout(btn_row)
 
         self.setLayout(main)
 
@@ -1087,9 +997,6 @@ class AdvancedPage(QWidget):
     # LOAD CONFIG (from preset)
     # -----------------------------
     def load_config(self, cfg):
-        self.src_input.setText(cfg.get("src", ""))
-        self.dst_input.setText(cfg.get("dst", ""))
-
         modes = ["copy", "mirror", "purge", "move", "moveall"]
         mode_val = cfg.get("mode", "copy")
         if mode_val in modes:
@@ -1213,19 +1120,6 @@ class AdvancedPage(QWidget):
         self.chk_nodd.setChecked(cfg.get("nodd", False))
         self.if_files.setText(cfg.get("if_files", ""))
 
-    # -----------------------------
-    # EXECUTION
-    # -----------------------------
-    def run(self):
-        self.execute(dry=False)
-
-    def dry_run(self):
-        self.execute(dry=True)
-
-    def stop(self):
-        self.core.stop()
-        self.log.append("Stopped process\n")
-
     def _collect_config(self, dry=False):
         modes = ["copy", "mirror", "purge", "move", "moveall"]
         subdirs = ["none", "s", "e"]
@@ -1238,8 +1132,7 @@ class AdvancedPage(QWidget):
             sparse = "n"
 
         return {
-            "src": self.src_input.text(),
-            "dst": self.dst_input.text(),
+            "src": "", "dst": "",
             "mode": modes[self.mode_btns.group.checkedId()],
             "subdirs": subdirs[self.subdir_btns.group.checkedId()],
             "mt": self.mt.value(),
@@ -1341,12 +1234,127 @@ class AdvancedPage(QWidget):
             "if_files": self.if_files.text(),
         }
 
+class RunPage(QWidget):
+    go_back = pyqtSignal()
+
+    def __init__(self, core):
+        super().__init__()
+        self.core = core
+        self._build_ui()
+
+    def _build_ui(self):
+        main = QVBoxLayout()
+        main.setSpacing(12)
+        main.setContentsMargins(12, 12, 12, 12)
+
+        # Title
+        title = QLabel("Execute Robocopy")
+        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #d4d4d4;")
+        main.addWidget(title)
+
+        # Command preview
+        preview_label = QLabel("Command:")
+        preview_label.setStyleSheet("font-weight: bold; color: #569cd6;")
+        main.addWidget(preview_label)
+
+        self.cmd_preview = QLineEdit()
+        self.cmd_preview.setReadOnly(True)
+        self.cmd_preview.setPlaceholderText("No command configured yet")
+        self.cmd_preview.setStyleSheet(
+            "QLineEdit { background-color: #1e1e1e; color: #6a9955; border: 1px solid #3c3c3c; "
+            "border-radius: 4px; padding: 5px 8px; font-family: Consolas, monospace; font-size: 12px; }"
+        )
+        main.addWidget(self.cmd_preview)
+
+        # Log output
+        self.log = QTextEdit()
+        self.log.setReadOnly(True)
+        self.log.setToolTip("Robocopy command output appears here")
+        self.log.setStyleSheet(
+            "QTextEdit { background-color: #0d0d0d; color: #d4d4d4; border: 1px solid #3c3c3c; "
+            "border-radius: 4px; padding: 8px; font-family: Consolas, monospace; font-size: 12px; }"
+        )
+        main.addWidget(self.log, 1)
+
+        # Action buttons
+        actions = QHBoxLayout()
+        actions.setSpacing(8)
+
+        self.start_btn = QPushButton("\u25b6  START")
+        self.start_btn.setToolTip("Begin the robocopy operation")
+        self.stop_btn = QPushButton("\u25a0  STOP")
+        self.stop_btn.setToolTip("Stop the currently running robocopy process")
+        self.dry_btn = QPushButton("\u25c9  DRY RUN")
+        self.dry_btn.setToolTip("Simulate - show what would be copied without actually copying (/L)")
+
+        btn_common = "padding: 8px 24px; font-size: 14px; border-radius: 4px; font-weight: bold;"
+        self.start_btn.setStyleSheet(
+            f"QPushButton {{ background-color: #0e639c; color: white; border: none; {btn_common} }}"
+            f"QPushButton:hover {{ background-color: #1177bb; }}"
+            f"QPushButton:pressed {{ background-color: #094771; }}"
+        )
+        self.stop_btn.setStyleSheet(
+            f"QPushButton {{ background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555555; {btn_common} }}"
+            f"QPushButton:hover {{ background-color: #4a4a4a; }}"
+            f"QPushButton:pressed {{ background-color: #2d2d2d; }}"
+        )
+        self.dry_btn.setStyleSheet(
+            f"QPushButton {{ background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #555555; {btn_common} }}"
+            f"QPushButton:hover {{ background-color: #3c3c3c; }}"
+            f"QPushButton:pressed {{ background-color: #1e1e1e; }}"
+        )
+
+        self.start_btn.clicked.connect(self.run)
+        self.stop_btn.clicked.connect(self.stop)
+        self.dry_btn.clicked.connect(self.dry_run)
+
+        actions.addStretch()
+        actions.addWidget(self.start_btn)
+        actions.addSpacing(8)
+        actions.addWidget(self.stop_btn)
+        actions.addSpacing(8)
+        actions.addWidget(self.dry_btn)
+        actions.addStretch()
+
+        main.addLayout(actions)
+
+        # Cancel button
+        cancel_row = QHBoxLayout()
+        self.cancel_btn = QPushButton("\u2190  Back")
+        self.cancel_btn.setToolTip("Return to setup page")
+        self.cancel_btn.setStyleSheet(
+            "QPushButton { background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555555; "
+            "padding: 8px 24px; font-size: 13px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: #4a4a4a; }"
+        )
+        self.cancel_btn.clicked.connect(self.go_back.emit)
+        cancel_row.addWidget(self.cancel_btn)
+        cancel_row.addStretch()
+        main.addLayout(cancel_row)
+
+        self.setLayout(main)
+
+    def set_command(self, cmd_list):
+        self._cmd_list = cmd_list
+        self.cmd_preview.setText(" ".join(cmd_list))
+
+    def run(self):
+        self.execute(dry=False)
+
+    def dry_run(self):
+        self.execute(dry=True)
+
+    def stop(self):
+        self.core.stop()
+        self.log.append("Stopped process\n")
+
     def execute(self, dry=False):
-        cfg = self._collect_config(dry=dry)
-        cmd = self.core.build_command(cfg)
+        cmd = list(self._cmd_list)
+        if not cmd:
+            self.log.append("No command to run\n")
+            return
 
         self.log.append("Running:\n" + " ".join(cmd) + "\n\n")
-        self.cmd_preview.setText(" ".join(cmd))
 
         def out(text, progress=False):
             text = text.strip()
@@ -1362,7 +1370,6 @@ class AdvancedPage(QWidget):
                 self.log.append(text)
 
         code = self.core.run(cmd, out)
-
         self.log.append(f"\nFinished (code {code})\n")
 
 
@@ -1379,40 +1386,63 @@ class RoboGUI(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         self.core = RoboCore()
+        self._current_cfg = dict(DEFAULT_CFG)
+        self._dialog = None
 
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
 
+        # Page 0 - Setup
         self.presets_page = PresetsPage(self.core)
-        self.advanced_page = AdvancedPage(self.core)
-
-        self.stack.addWidget(self.presets_page)
-        self.stack.addWidget(self.advanced_page)
-
+        self.presets_page.adv_btn.clicked.connect(self._open_full_controls)
         self.presets_page.preset_selected.connect(self._on_preset)
-        self.presets_page.adv_btn.clicked.connect(lambda: self.stack.setCurrentIndex(1))
-        self.advanced_page.go_back.connect(lambda: self.stack.setCurrentIndex(0))
+        self.presets_page.next_clicked.connect(self._go_to_run)
+        self.stack.addWidget(self.presets_page)
 
-        self._sync_paths()
+        # Page 1 - Run
+        self.run_page = RunPage(self.core)
+        self.run_page.go_back.connect(self._go_to_setup)
+        self.stack.addWidget(self.run_page)
 
-    def _sync_paths(self):
-        self.presets_page.src_input.textChanged.connect(
-            lambda t: self.advanced_page.src_input.setText(t)
-            if self.advanced_page.src_input.text() != t else None
-        )
-        self.advanced_page.src_input.textChanged.connect(
-            lambda t: self.presets_page.src_input.setText(t)
-            if self.presets_page.src_input.text() != t else None
-        )
-        self.presets_page.dst_input.textChanged.connect(
-            lambda t: self.advanced_page.dst_input.setText(t)
-            if self.advanced_page.dst_input.text() != t else None
-        )
-        self.advanced_page.dst_input.textChanged.connect(
-            lambda t: self.presets_page.dst_input.setText(t)
-            if self.presets_page.dst_input.text() != t else None
-        )
+        self._sync_preset_paths()
+        self.stack.setCurrentIndex(0)
+
+    def _sync_preset_paths(self):
+        self.presets_page.src_input.textChanged.connect(self._update_preview)
+        self.presets_page.dst_input.textChanged.connect(self._update_preview)
+
+    def _update_preview(self):
+        merged = dict(self._current_cfg)
+        merged["src"] = self.presets_page.src_input.text()
+        merged["dst"] = self.presets_page.dst_input.text()
+        cmd = self.core.build_command(merged)
+        self.presets_page.cmd_preview.setText(" ".join(cmd))
 
     def _on_preset(self, cfg):
-        self.advanced_page.load_config(cfg)
+        self._current_cfg = cfg
+        self._current_cfg["src"] = self.presets_page.src_input.text()
+        self._current_cfg["dst"] = self.presets_page.dst_input.text()
+        self._update_preview()
+
+    def _open_full_controls(self):
+        if self._dialog is None:
+            self._dialog = FullControlsDialog(self.core, self)
+        self._dialog.load_config(self._current_cfg)
+        if self._dialog.exec() == QDialog.DialogCode.Accepted:
+            collected = self._dialog._collect_config(dry=False)
+            self._current_cfg.update(collected)
+            self._current_cfg["src"] = self.presets_page.src_input.text()
+            self._current_cfg["dst"] = self.presets_page.dst_input.text()
+            self._update_preview()
+
+    def _go_to_run(self):
+        cfg = dict(self._current_cfg)
+        cfg["src"] = self.presets_page.src_input.text()
+        cfg["dst"] = self.presets_page.dst_input.text()
+        cmd = self.core.build_command(cfg)
+        self.run_page.set_command(cmd)
+        self.run_page.log.clear()
         self.stack.setCurrentIndex(1)
+
+    def _go_to_setup(self):
+        self.stack.setCurrentIndex(0)

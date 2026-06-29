@@ -155,6 +155,7 @@ QLabel#cardTags {
 
 class PresetsPage(QWidget):
     preset_selected = pyqtSignal(dict)
+    next_clicked = pyqtSignal()
 
     def __init__(self, core):
         super().__init__()
@@ -198,10 +199,21 @@ class PresetsPage(QWidget):
         paths_group.setLayout(paths_layout)
         root.addWidget(paths_group)
 
-        # ---- Title ----
+        # ---- Title row ----
+        title_row = QHBoxLayout()
         title = QLabel("Choose a Preset")
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #d4d4d4; padding: 8px 0;")
-        root.addWidget(title)
+        title_row.addWidget(title)
+        title_row.addStretch()
+        self.adv_btn = QPushButton("Advanced Controls")
+        self.adv_btn.setToolTip("Open the advanced options dialog")
+        self.adv_btn.setStyleSheet(
+            "QPushButton { background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #555555; "
+            "padding: 6px 16px; font-size: 12px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: #3c3c3c; }"
+        )
+        title_row.addWidget(self.adv_btn)
+        root.addLayout(title_row)
 
         # ---- Preset Grid ----
         scroll = QScrollArea()
@@ -241,23 +253,20 @@ class PresetsPage(QWidget):
 
         root.addLayout(preview_row)
 
-        # ---- Advanced Mode Button ----
+        # ---- Bottom Buttons ----
         btn_row = QHBoxLayout()
         btn_row.addStretch()
-        self.adv_btn = QPushButton("Advanced Mode \u2192")
-        self.adv_btn.setToolTip("Switch to the full advanced options view")
-        self.adv_btn.setStyleSheet(
+        self.next_btn = QPushButton("Next \u2192")
+        self.next_btn.setToolTip("Proceed to run the robocopy command")
+        self.next_btn.setStyleSheet(
             "QPushButton { background-color: #0e639c; padding: 8px 24px; font-size: 13px; }"
             "QPushButton:hover { background-color: #1177bb; }"
         )
-        btn_row.addWidget(self.adv_btn)
+        self.next_btn.clicked.connect(self.next_clicked.emit)
+        btn_row.addWidget(self.next_btn)
         root.addLayout(btn_row)
 
         self.setLayout(root)
-
-        # Signals for live preview
-        self.src_input.textChanged.connect(self._update_preview)
-        self.dst_input.textChanged.connect(self._update_preview)
 
     def _build_card(self, preset):
         card = QFrame()
