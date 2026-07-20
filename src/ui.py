@@ -163,6 +163,9 @@ class CollapsibleBox(QWidget):
     def __init__(self, title="", expanded=False):
         super().__init__()
 
+        self._title = title
+        self._search_query = ""
+
         self.toggle_btn = QPushButton()
         self.toggle_btn.setCheckable(True)
         self.toggle_btn.setChecked(expanded)
@@ -203,15 +206,99 @@ class CollapsibleBox(QWidget):
         self.content.setVisible(expanded)
 
     def set_title(self, title, expanded):
+        self._title = title
         arrow = "▼" if expanded else "▶"
         self.toggle_btn.setText(f"{arrow} {title}")
 
     def toggle(self):
         visible = self.toggle_btn.isChecked()
         self.content.setVisible(visible)
-        title = self.toggle_btn.text()[1:].strip()
         arrow = "▼" if visible else "▶"
-        self.toggle_btn.setText(f"{arrow} {title}")
+        if self._search_query:
+            self.toggle_btn.setText(f"{arrow} {self._hl(self._title, self._search_query)}")
+        else:
+            self.toggle_btn.setText(f"{arrow} {self._title}")
+
+    def set_expanded(self, expanded):
+        if self.toggle_btn.isChecked() != expanded:
+            self.toggle_btn.setChecked(expanded)
+            self.toggle()
+
+    def collect_search_text(self):
+        parts = [self._title]
+        for w in self.content.findChildren((QCheckBox, QLabel, QLineEdit, QSpinBox, QComboBox, QPushButton)):
+            if w is self.toggle_btn:
+                continue
+            parts.append(w.text() if hasattr(w, "text") else "")
+            tip = w.toolTip()
+            if tip:
+                parts.append(tip)
+        return " ".join(parts).lower()
+
+    def set_search_query(self, query):
+        self._search_query = query
+        arrow = "▼" if self.toggle_btn.isChecked() else "▶"
+        if query:
+            self.toggle_btn.setText(f"{arrow} {self._hl(self._title, query)}")
+            self._highlight_children(query)
+        else:
+            self.toggle_btn.setText(f"{arrow} {self._title}")
+            self._clear_child_highlights()
+
+    def _hl(self, text, query):
+        lo = text.lower()
+        q = query.lower()
+        start = lo.find(q)
+        if start == -1:
+            return text
+        end = start + len(query)
+        return (
+            f"{text[:start]}"
+            f"<span style='background:#5b4a1a; color:#ffd33d; border-radius:2px; padding:0 1px;'>{text[start:end]}</span>"
+            f"{text[end:]}"
+        )
+
+    def _highlight_children(self, query):
+        for w in self.content.findChildren((QCheckBox, QLabel, QLineEdit)):
+            if not hasattr(w, "text") or not hasattr(w, "toolTip"):
+                continue
+            orig = getattr(w, "_orig_text", None)
+            if orig is None:
+                orig = w.text()
+                w._orig_text = orig
+            if orig and query.lower() in orig.lower():
+                if isinstance(w, QLineEdit):
+                    w.setPlaceholderText(orig)
+                elif isinstance(w, QLabel):
+                    w.setText(self._hl(orig, query))
+                else:
+                    w.setText(f"🔍 {orig}")
+            elif orig:
+                if not isinstance(w, QLineEdit):
+                    w.setText(orig)
+            tip = w.toolTip()
+            if tip:
+                orig_tip = getattr(w, "_orig_tip", None)
+                if orig_tip is None:
+                    orig_tip = tip
+                    w._orig_tip = orig_tip
+                if query.lower() in orig_tip.lower() and not (orig and query.lower() in orig.lower()):
+                    w.setToolTip(f"🔍 {orig_tip}")
+                elif not query.lower() in orig_tip.lower():
+                    w.setToolTip(orig_tip)
+
+    def _clear_child_highlights(self):
+        for w in self.content.findChildren((QCheckBox, QLabel, QLineEdit)):
+            orig = getattr(w, "_orig_text", None)
+            if orig is not None and not isinstance(w, QLineEdit):
+                w.setText(orig)
+            orig_tip = getattr(w, "_orig_tip", None)
+            if orig_tip is not None:
+                w.setToolTip(orig_tip)
+
+    def _strip_html(self, html):
+        import re
+        return re.sub(r"<[^>]+>", "", html)
 
 
 class SegmentedButtons(QWidget):
@@ -278,6 +365,33 @@ class FullControlsDialog(QDialog):
         main = QVBoxLayout()
         main.setSpacing(8)
         main.setContentsMargins(12, 12, 12, 12)
+
+        # -----------------------------
+        # SEARCH BAR
+        # -----------------------------
+        search_row = QHBoxLayout()
+        search_row.setSpacing(6)
+
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("\U0001F50D  Search options (e.g. /W, retry, mirror, multi thread...)")
+        self.search_input.setClearButtonEnabled(True)
+        self.search_input.setMaximumHeight(32)
+        self.search_input.setStyleSheet(
+            "QLineEdit { background-color: #252526; color: #d4d4d4; border: 1px solid #3c3c3c; "
+            "border-radius: 4px; padding: 4px 8px; font-size: 12px; }"
+            "QLineEdit:focus { border-color: #0e639c; }"
+        )
+        self.search_input.textChanged.connect(self._filter_sections)
+
+        self.search_count_label = QLabel("")
+        self.search_count_label.setStyleSheet("color: #808080; font-size: 11px;")
+        self.search_count_label.setFixedWidth(100)
+
+        search_row.addWidget(self.search_input, 1)
+        search_row.addWidget(self.search_count_label)
+        main.addLayout(search_row)
+
+        self._sections = []
 
         # -----------------------------
         # SCROLL AREA
@@ -356,6 +470,7 @@ class FullControlsDialog(QDialog):
         self.basic.content_layout.addLayout(row_perf)
 
         scroll_layout.addWidget(self.basic)
+        self._sections.append(self.basic)
 
         # ============================================================
         # COPY OPTIONS (COLLAPSED)
@@ -527,6 +642,7 @@ class FullControlsDialog(QDialog):
         self.copy_opts.content_layout.addLayout(c8)
 
         scroll_layout.addWidget(self.copy_opts)
+        self._sections.append(self.copy_opts)
 
         # ============================================================
         # FILE SELECTION (COLLAPSED)
@@ -678,6 +794,7 @@ class FullControlsDialog(QDialog):
         self.file_sel.content_layout.addLayout(f7)
 
         scroll_layout.addWidget(self.file_sel)
+        self._sections.append(self.file_sel)
 
         # ============================================================
         # FILE THROTTLING (COLLAPSED)
@@ -710,6 +827,7 @@ class FullControlsDialog(QDialog):
         self.throttle.content_layout.addLayout(t1)
 
         scroll_layout.addWidget(self.throttle)
+        self._sections.append(self.throttle)
 
         # ============================================================
         # RETRY OPTIONS (COLLAPSED)
@@ -742,6 +860,7 @@ class FullControlsDialog(QDialog):
         self.retry_opts.content_layout.addLayout(r2)
 
         scroll_layout.addWidget(self.retry_opts)
+        self._sections.append(self.retry_opts)
 
         # ============================================================
         # LOGGING OPTIONS (COLLAPSED)
@@ -851,6 +970,7 @@ class FullControlsDialog(QDialog):
         self.log_opts.content_layout.addLayout(l5)
 
         scroll_layout.addWidget(self.log_opts)
+        self._sections.append(self.log_opts)
 
         # ============================================================
         # JOB OPTIONS (COLLAPSED)
@@ -894,6 +1014,7 @@ class FullControlsDialog(QDialog):
         self.job_opts.content_layout.addLayout(j3)
 
         scroll_layout.addWidget(self.job_opts)
+        self._sections.append(self.job_opts)
 
         # ============================================================
         # RAW ARGUMENTS (COLLAPSED)
@@ -907,6 +1028,7 @@ class FullControlsDialog(QDialog):
         self.raw.content_layout.addWidget(self.raw_cmd)
 
         scroll_layout.addWidget(self.raw)
+        self._sections.append(self.raw)
 
         scroll_layout.addStretch()
 
@@ -954,6 +1076,7 @@ class FullControlsDialog(QDialog):
 
         self.setLayout(main)
 
+        self._build_search_index()
         self._connect_preview_signals()
 
     # -----------------------------
@@ -995,6 +1118,41 @@ class FullControlsDialog(QDialog):
         self.preview_command()
 
     # -----------------------------
+    # SEARCH
+    # -----------------------------
+    def _build_search_index(self):
+        self._search_index = []
+        self._initial_states = {}
+        for box in self._sections:
+            self._search_index.append((box, box.collect_search_text()))
+            self._initial_states[box] = box.toggle_btn.isChecked()
+
+    def _filter_sections(self, query):
+        q = query.strip().lower()
+        if not q:
+            for box in self._sections:
+                box.setVisible(True)
+                box.set_search_query("")
+                box.set_expanded(self._initial_states.get(box, False))
+            self.search_count_label.setText("")
+            return
+        matched = 0
+        total = len(self._sections)
+        for box, text in self._search_index:
+            if q in text:
+                matched += 1
+                box.setVisible(True)
+                box.set_search_query(query.strip())
+                box.set_expanded(True)
+            else:
+                box.setVisible(False)
+                box.set_search_query("")
+        self.search_count_label.setText(f"{matched} of {total} sections")
+
+    def _clear_search(self):
+        self.search_input.clear()
+
+    # -----------------------------
     # LOAD CONFIG (from preset)
     # -----------------------------
     def load_config(self, cfg):
@@ -1016,9 +1174,9 @@ class FullControlsDialog(QDialog):
                     btn.setChecked(True)
                     break
 
-        self.mt.setValue(cfg.get("mt", 16))
-        self.retries.setValue(cfg.get("retries", 2))
-        self.wait.setValue(cfg.get("wait", 1))
+        self.mt.setValue(cfg.get("mt", 16) or 16)
+        self.retries.setValue(cfg.get("retries") or 2)
+        self.wait.setValue(cfg.get("wait") or 1)
 
         self.chk_z.setChecked(cfg.get("z", False))
         self.chk_b.setChecked(cfg.get("b", False))

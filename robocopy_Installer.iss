@@ -3,7 +3,7 @@
 [Setup]
 AppId={{B3C9D2A1-8F11-4A2C-9B11-00AABBCCDDEE}
 AppName=InbetweenAnimation RoboGUI
-AppVersion=1.0.4
+AppVersion=1.0.5
 AppPublisher=InbetweenAnimation
 AppPublisherURL=https://inbetweenanimation.com
 AppSupportURL=https://inbetweenanimation.com
