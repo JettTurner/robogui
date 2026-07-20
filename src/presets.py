@@ -4,13 +4,15 @@ from PyQt6.QtWidgets import (
     QGridLayout, QFrame, QScrollArea
 )
 from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QIntValidator
+from PyQt6.QtGui import QGuiApplication
 
 from core import RoboCore
 
 
 DEFAULT_CFG = {
     "src": "", "dst": "", "mode": "copy", "subdirs": "e",
-    "mt": 16, "retries": 2, "wait": 1, "dry_run": False,
+    "mt": 0, "retries": None, "wait": 1, "dry_run": False,
     "z": False, "b": False, "zb": False, "j": False, "efsraw": False,
     "copy_flags": "", "dcopy_flags": "", "sec": False, "copyall": False,
     "nocopy": False, "secfix": False, "timfix": False, "add_attr": "",
@@ -95,9 +97,9 @@ PRESETS = [
     {
         "name": "Dry Run Preview",
         "desc": "Simulate the copy — see what would happen without actually copying anything.",
-        "tags": "/L /E /X /V /TS /FP",
+        "tags": "/L /E /X /V /TS /FP /MT:16",
         "cfg": {
-            "mode": "copy", "subdirs": "e",
+            "mode": "copy", "subdirs": "e", "mt": 16,
             "list_only": True, "x_report": True, "v": True,
             "ts": True, "fp": True,
             "njh": True, "njs": True,
@@ -117,9 +119,9 @@ PRESETS = [
     {
         "name": "Move Files",
         "desc": "Copy then delete source files. All subdirectories included.",
-        "tags": "/MOV /E /COPY:DAT",
+        "tags": "/MOV /E /COPY:DAT /MT:16",
         "cfg": {
-            "mode": "move", "subdirs": "e",
+            "mode": "move", "subdirs": "e", "mt": 16,
             "copy_flags": "DAT", "retries": 2, "wait": 1,
         },
     },
@@ -204,6 +206,46 @@ class PresetsPage(QWidget):
         title = QLabel("Choose a Preset")
         title.setStyleSheet("font-size: 18px; font-weight: bold; color: #d4d4d4; padding: 8px 0;")
         title_row.addWidget(title)
+        title_row.addSpacing(20)
+
+        btn_style = (
+            "QPushButton { background-color: #3c3c3c; color: #d4d4d4; border: 1px solid #555555; "
+            "border-radius: 3px; font-size: 10px; padding: 0px; }"
+            "QPushButton:hover { background-color: #555555; }"
+        )
+
+        title_row.addWidget(QLabel("Threads:"))
+        self.mt_input = QLineEdit()
+        self.mt_input.setPlaceholderText("off")
+        self.mt_input.setToolTip("Number of parallel threads (/MT). Leave empty for default (single-threaded).")
+        self.mt_input.setMaximumWidth(50)
+        self.mt_input.setValidator(QIntValidator(1, 128))
+        title_row.addWidget(self.mt_input)
+
+        self.mt_clear = QPushButton("X")
+        self.mt_clear.setToolTip("Clear threads (reset to off)")
+        self.mt_clear.setFixedSize(22, 22)
+        self.mt_clear.setStyleSheet(btn_style)
+        self.mt_clear.clicked.connect(lambda: self.mt_input.clear())
+        title_row.addWidget(self.mt_clear)
+
+        title_row.addSpacing(12)
+
+        title_row.addWidget(QLabel("Retries:"))
+        self.retries_input = QLineEdit()
+        self.retries_input.setPlaceholderText("infinite")
+        self.retries_input.setToolTip("Number of retries on failed copies (/R). Leave empty for robocopy default (1000000).")
+        self.retries_input.setMaximumWidth(50)
+        self.retries_input.setValidator(QIntValidator(0, 999999))
+        title_row.addWidget(self.retries_input)
+
+        self.retries_clear = QPushButton("X")
+        self.retries_clear.setToolTip("Clear retries (reset to infinite)")
+        self.retries_clear.setFixedSize(22, 22)
+        self.retries_clear.setStyleSheet(btn_style)
+        self.retries_clear.clicked.connect(lambda: self.retries_input.clear())
+        title_row.addWidget(self.retries_clear)
+
         title_row.addStretch()
         self.adv_btn = QPushButton("Advanced Controls")
         self.adv_btn.setToolTip("Open the advanced options dialog")
@@ -255,6 +297,15 @@ class PresetsPage(QWidget):
 
         # ---- Bottom Buttons ----
         btn_row = QHBoxLayout()
+        self.copy_cmd_btn = QPushButton("📋 Copy Command")
+        self.copy_cmd_btn.setToolTip("Copy the generated command to clipboard")
+        self.copy_cmd_btn.setStyleSheet(
+            "QPushButton { background-color: #2d2d2d; color: #d4d4d4; border: 1px solid #555555; "
+            "padding: 8px 24px; font-size: 13px; border-radius: 4px; }"
+            "QPushButton:hover { background-color: #3c3c3c; }"
+        )
+        self.copy_cmd_btn.clicked.connect(self._copy_command)
+        btn_row.addWidget(self.copy_cmd_btn)
         btn_row.addStretch()
         self.next_btn = QPushButton("Next \u2192")
         self.next_btn.setToolTip("Proceed to run the robocopy command")
@@ -320,4 +371,12 @@ class PresetsPage(QWidget):
         path = QFileDialog.getExistingDirectory(self)
         if path:
             self.dst_input.setText(path)
+
+    def _copy_command(self):
+        cmd = self.cmd_preview.text()
+        if cmd:
+            QGuiApplication.clipboard().setText(cmd)
+            self.copy_cmd_btn.setText("✔ Copied!")
+            from PyQt6.QtCore import QTimer
+            QTimer.singleShot(1500, lambda: self.copy_cmd_btn.setText("📋 Copy Command"))
 

@@ -199,7 +199,9 @@ class RoboCore:
 
         # ---- Retry Options ----
 
-        cmd.append(f"/R:{cfg.get('retries', 2)}")
+        retries = cfg.get("retries")
+        if retries is not None:
+            cmd.append(f"/R:{retries}")
         cmd.append(f"/W:{cfg.get('wait', 1)}")
 
         if cfg.get("reg"):

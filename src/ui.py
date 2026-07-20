@@ -1414,11 +1414,17 @@ class RoboGUI(QMainWindow):
     def _sync_preset_paths(self):
         self.presets_page.src_input.textChanged.connect(self._update_preview)
         self.presets_page.dst_input.textChanged.connect(self._update_preview)
+        self.presets_page.mt_input.textChanged.connect(self._update_preview)
+        self.presets_page.retries_input.textChanged.connect(self._update_preview)
 
     def _update_preview(self):
         merged = dict(self._current_cfg)
         merged["src"] = self.presets_page.src_input.text()
         merged["dst"] = self.presets_page.dst_input.text()
+        mt_text = self.presets_page.mt_input.text().strip()
+        merged["mt"] = int(mt_text) if mt_text else 0
+        retries_text = self.presets_page.retries_input.text().strip()
+        merged["retries"] = int(retries_text) if retries_text else None
         cmd = self.core.build_command(merged)
         self.presets_page.cmd_preview.setText(self.core.format_command(cmd))
 
@@ -1426,6 +1432,16 @@ class RoboGUI(QMainWindow):
         self._current_cfg = cfg
         self._current_cfg["src"] = self.presets_page.src_input.text()
         self._current_cfg["dst"] = self.presets_page.dst_input.text()
+        mt_val = cfg.get("mt", 0)
+        if mt_val > 0:
+            self.presets_page.mt_input.setText(str(mt_val))
+        else:
+            self.presets_page.mt_input.clear()
+        retries_val = cfg.get("retries")
+        if retries_val is not None:
+            self.presets_page.retries_input.setText(str(retries_val))
+        else:
+            self.presets_page.retries_input.clear()
         self._update_preview()
 
     def _open_full_controls(self):
@@ -1443,6 +1459,10 @@ class RoboGUI(QMainWindow):
         cfg = dict(self._current_cfg)
         cfg["src"] = self.presets_page.src_input.text()
         cfg["dst"] = self.presets_page.dst_input.text()
+        mt_text = self.presets_page.mt_input.text().strip()
+        cfg["mt"] = int(mt_text) if mt_text else 0
+        retries_text = self.presets_page.retries_input.text().strip()
+        cfg["retries"] = int(retries_text) if retries_text else None
         self.run_page.set_config(cfg)
         self.run_page.log.clear()
         self.stack.setCurrentIndex(1)
