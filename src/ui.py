@@ -979,7 +979,7 @@ class FullControlsDialog(QDialog):
     def preview_command(self):
         cfg = self._collect_config(dry=False)
         cmd = self.core.build_command(cfg)
-        self.cmd_preview.setText(" ".join(cmd))
+        self.cmd_preview.setText(self.core.format_command(cmd))
 
     def _connect_preview_signals(self):
         for w in self.findChildren(QLineEdit):
@@ -1337,7 +1337,7 @@ class RunPage(QWidget):
     def set_config(self, cfg):
         self._cfg = cfg
         cmd = self.core.build_command(cfg)
-        self.cmd_preview.setText(" ".join(cmd))
+        self.cmd_preview.setText(self.core.format_command(cmd))
 
     def run(self):
         self.execute(dry=False)
@@ -1358,7 +1358,7 @@ class RunPage(QWidget):
             self.log.append("No command to run\n")
             return
 
-        self.log.append("Running:\n" + " ".join(cmd) + "\n\n")
+        self.log.append("Running:\n" + self.core.format_command(cmd) + "\n\n")
 
         def out(text, progress=False):
             text = text.strip()
@@ -1420,7 +1420,7 @@ class RoboGUI(QMainWindow):
         merged["src"] = self.presets_page.src_input.text()
         merged["dst"] = self.presets_page.dst_input.text()
         cmd = self.core.build_command(merged)
-        self.presets_page.cmd_preview.setText(" ".join(cmd))
+        self.presets_page.cmd_preview.setText(self.core.format_command(cmd))
 
     def _on_preset(self, cfg):
         self._current_cfg = cfg

@@ -284,6 +284,11 @@ class RoboCore:
 
         return cmd
 
+    def format_command(self, cmd):
+        if len(cmd) >= 3:
+            return f'{cmd[0]} "{cmd[1]}" "{cmd[2]}" ' + " ".join(cmd[3:])
+        return " ".join(cmd)
+
     def run(self, cmd, on_output):
         self.process = subprocess.Popen(
             cmd,
