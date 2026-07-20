@@ -6,12 +6,14 @@ from PyQt6.QtWidgets import (
     QFileDialog, QTextEdit,
     QCheckBox, QSpinBox, QButtonGroup,
     QFrame, QScrollArea, QComboBox, QDialog,
-    QStackedWidget
+    QStackedWidget, QTreeWidget, QTreeWidgetItem,
+    QTabWidget, QSplitter, QProgressBar
 )
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QColor, QBrush
 from core import RoboCore
+from scanner import DirectoryScanner
 from version import __version__
 from presets import PresetsPage, DEFAULT_CFG
 
@@ -155,6 +157,81 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
 }
 QLabel {
     background: transparent;
+}
+QTabWidget::pane {
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    background-color: #1e1e1e;
+}
+QTabBar::tab {
+    background-color: #2d2d2d;
+    color: #858585;
+    border: 1px solid #3c3c3c;
+    border-bottom: none;
+    border-top-left-radius: 4px;
+    border-top-right-radius: 4px;
+    padding: 6px 20px;
+    margin-right: 2px;
+    font-size: 12px;
+}
+QTabBar::tab:selected {
+    background-color: #1e1e1e;
+    color: #569cd6;
+    font-weight: bold;
+}
+QTabBar::tab:hover:!selected {
+    background-color: #3c3c3c;
+    color: #d4d4d4;
+}
+QTreeWidget {
+    background-color: #1e1e1e;
+    color: #d4d4d4;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    outline: none;
+    font-family: "Consolas", "Courier New", monospace;
+    font-size: 12px;
+}
+QTreeWidget::item {
+    padding: 2px 4px;
+    border-radius: 2px;
+}
+QTreeWidget::item:selected {
+    background-color: #264f78;
+}
+QTreeWidget::item:hover {
+    background-color: #2a2d2e;
+}
+QTreeWidget::branch {
+    background-color: #1e1e1e;
+}
+QHeaderView::section {
+    background-color: #252526;
+    color: #569cd6;
+    border: 1px solid #3c3c3c;
+    padding: 4px 8px;
+    font-weight: bold;
+    font-size: 12px;
+}
+QSplitter::handle {
+    background-color: #3c3c3c;
+    width: 3px;
+}
+QSplitter::handle:hover {
+    background-color: #569cd6;
+}
+QProgressBar {
+    background-color: #252526;
+    border: 1px solid #3c3c3c;
+    border-radius: 4px;
+    text-align: center;
+    color: #d4d4d4;
+    font-size: 11px;
+    max-height: 18px;
+}
+QProgressBar::chunk {
+    background-color: #0e639c;
+    border-radius: 3px;
 }
 """
 
@@ -1393,12 +1470,228 @@ class FullControlsDialog(QDialog):
             "if_files": self.if_files.text(),
         }
 
+
+COLOR_NEW = QColor("#4ec9b0")
+COLOR_OVERWRITE = QColor("#dcdcaa")
+COLOR_SAME = QColor("#6a6a6a")
+COLOR_DIR = QColor("#569cd6")
+
+
+class FilePreviewWidget(QWidget):
+    def __init__(self, scanner, parent=None):
+        super().__init__(parent)
+        self.scanner = scanner
+        self._build_ui()
+        self._connect_signals()
+
+    def _build_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(6)
+
+        header = QHBoxLayout()
+        src_label = QLabel("\u25c0  Source")
+        src_label.setStyleSheet("color: #4ec9b0; font-weight: bold; font-size: 13px;")
+        dst_label = QLabel("Destination  \u25b6")
+        dst_label.setStyleSheet("color: #569cd6; font-weight: bold; font-size: 13px;")
+        header.addWidget(src_label)
+        header.addStretch()
+        header.addWidget(dst_label)
+        layout.addLayout(header)
+
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        self.src_tree = self._make_tree()
+        self.dst_tree = self._make_tree()
+        splitter.addWidget(self.src_tree)
+        splitter.addWidget(self.dst_tree)
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 1)
+
+        layout.addWidget(splitter, 1)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setMaximum(0)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setFormat("%v / %m directories")
+        self.progress_bar.setVisible(False)
+        layout.addWidget(self.progress_bar)
+
+        self.status_label = QLabel()
+        self.status_label.setStyleSheet(
+            "color: #858585; font-size: 11px; background: transparent; font-style: italic;"
+        )
+        self.status_label.setVisible(False)
+        layout.addWidget(self.status_label)
+
+        legend = QHBoxLayout()
+        legend.setSpacing(16)
+        for color, text in [
+            (COLOR_NEW, "\u25cf New (will copy)"),
+            (COLOR_OVERWRITE, "\u25cf Overwrite"),
+            (COLOR_SAME, "\u25cf Identical (skip)"),
+        ]:
+            lbl = QLabel(text)
+            lbl.setStyleSheet(f"color: {color.name()}; font-size: 11px; background: transparent;")
+            legend.addWidget(lbl)
+        legend.addStretch()
+        layout.addLayout(legend)
+
+    def _connect_signals(self):
+        self.scanner.progress.connect(self._on_progress)
+        self.scanner.finished.connect(self._on_finished)
+        self.scanner.error.connect(self._on_error)
+
+    def _make_tree(self):
+        tree = QTreeWidget()
+        tree.setHeaderLabels(["Name", "Size", "Modified"])
+        tree.setColumnCount(3)
+        tree.setAlternatingRowColors(False)
+        tree.setRootIsDecorated(True)
+        tree.setIndentation(16)
+        tree.setAnimated(False)
+        tree.header().setDefaultSectionSize(140)
+        tree.header().setStretchLastSection(True)
+        tree.setSortingEnabled(False)
+        return tree
+
+    def _format_size(self, size):
+        if size < 1024:
+            return f"{size} B"
+        elif size < 1024 * 1024:
+            return f"{size / 1024:.1f} KB"
+        elif size < 1024 * 1024 * 1024:
+            return f"{size / (1024 * 1024):.1f} MB"
+        else:
+            return f"{size / (1024 * 1024 * 1024):.2f} GB"
+
+    def _format_date(self, dt):
+        return dt.strftime("%Y-%m-%d %H:%M")
+
+    def _show_loading(self):
+        self.progress_bar.setValue(0)
+        self.progress_bar.setMaximum(0)
+        self.progress_bar.setVisible(True)
+        self.status_label.setText("Preparing scan...")
+        self.status_label.setVisible(True)
+
+    def _hide_loading(self):
+        self.progress_bar.setVisible(False)
+        self.status_label.setVisible(False)
+
+    def _on_progress(self, path, current, total):
+        if total > 0:
+            self.progress_bar.setMaximum(total)
+            self.progress_bar.setValue(current)
+        self.status_label.setText(path)
+
+    def _on_finished(self, src_files, dst_files):
+        src_status = {}
+        for rel, info in src_files.items():
+            if info["is_dir"]:
+                continue
+            if rel not in dst_files:
+                src_status[rel] = "new"
+            elif dst_files[rel]["size"] != info["size"]:
+                src_status[rel] = "overwrite"
+            elif dst_files[rel]["modified"] > info["modified"]:
+                src_status[rel] = "overwrite"
+            else:
+                src_status[rel] = "same"
+
+        self._build_tree(self.src_tree, src_files, src_status)
+        self._build_tree(self.dst_tree, dst_files, {})
+        self._hide_loading()
+
+    def _on_error(self, msg):
+        self.src_tree.clear()
+        self.dst_tree.clear()
+        item = QTreeWidgetItem(self.src_tree)
+        item.setText(0, f"Error: {msg}")
+        item.setForeground(0, QBrush(COLOR_OVERWRITE))
+        self._hide_loading()
+
+    def _build_tree(self, tree, files, status_map):
+        tree.clear()
+        folders = {}
+
+        for rel_path, info in sorted(files.items()):
+            parts = rel_path.replace("\\", "/").split("/")
+            name = info["name"]
+            is_dir = info["is_dir"]
+
+            if is_dir and len(parts) == 1:
+                folder_item = QTreeWidgetItem(tree)
+                folder_item.setText(0, name)
+                folder_item.setText(1, "")
+                folder_item.setText(2, "")
+                folder_item.setIcon(0, self.style().standardIcon(
+                    self.style().StandardPixmap.SP_DirIcon
+                ))
+                folder_item.setForeground(0, QBrush(COLOR_DIR))
+                folder_item.setFlags(folder_item.flags() & ~Qt.ItemFlag.ItemIsSelectable)
+                folders[name] = folder_item
+                continue
+
+            if is_dir:
+                continue
+
+            parent_parts = parts[:-1]
+            parent = None
+            if parent_parts:
+                parent_key = "/".join(parent_parts)
+                parent = folders.get(parent_key)
+
+            item = QTreeWidgetItem(parent if parent else tree)
+            item.setText(0, name)
+            item.setText(1, self._format_size(info["size"]))
+            item.setText(2, self._format_date(info["modified"]))
+
+            status = status_map.get(rel_path, "same")
+            if status == "new":
+                fg = COLOR_NEW
+            elif status == "overwrite":
+                fg = COLOR_OVERWRITE
+            else:
+                fg = COLOR_SAME
+            item.setForeground(0, QBrush(fg))
+            item.setForeground(1, QBrush(fg))
+            item.setForeground(2, QBrush(fg))
+
+        tree.expandAll()
+
+    def populate(self, src_path, dst_path, cfg):
+        self.src_tree.clear()
+        self.dst_tree.clear()
+
+        if not src_path or not os.path.isdir(src_path):
+            item = QTreeWidgetItem(self.src_tree)
+            item.setText(0, "No source folder selected")
+            item.setForeground(0, QBrush(COLOR_SAME))
+            self._hide_loading()
+            return
+
+        self._show_loading()
+
+        if not dst_path or not os.path.isdir(dst_path):
+            dst_path = ""
+
+        self.scanner.start_scan(src_path, dst_path, cfg)
+
+    def clear(self):
+        self.scanner.cancel_scan()
+        self.src_tree.clear()
+        self.dst_tree.clear()
+        self._hide_loading()
+
+
 class RunPage(QWidget):
     go_back = pyqtSignal()
 
-    def __init__(self, core):
+    def __init__(self, core, scanner):
         super().__init__()
         self.core = core
+        self.scanner = scanner
         self._build_ui()
 
     def _build_ui(self):
@@ -1425,7 +1718,12 @@ class RunPage(QWidget):
         )
         main.addWidget(self.cmd_preview)
 
-        # Log output
+        # Tabs: File Preview + Log Output
+        self.tabs = QTabWidget()
+
+        self.preview = FilePreviewWidget(self.scanner)
+        self.tabs.addTab(self.preview, "\u25a3  File Preview")
+
         self.log = QTextEdit()
         self.log.setReadOnly(True)
         self.log.setToolTip("Robocopy command output appears here")
@@ -1433,7 +1731,9 @@ class RunPage(QWidget):
             "QTextEdit { background-color: #0d0d0d; color: #d4d4d4; border: 1px solid #3c3c3c; "
             "border-radius: 4px; padding: 8px; font-family: Consolas, monospace; font-size: 12px; }"
         )
-        main.addWidget(self.log, 1)
+        self.tabs.addTab(self.log, "\u25b6  Log Output")
+
+        main.addWidget(self.tabs, 1)
 
         # Action buttons
         actions = QHBoxLayout()
@@ -1509,6 +1809,8 @@ class RunPage(QWidget):
         self.log.append("Stopped process\n")
 
     def execute(self, dry=False):
+        self.tabs.setCurrentWidget(self.log)
+
         cfg = dict(self._cfg)
         if dry:
             cfg["dry_run"] = True
@@ -1549,6 +1851,7 @@ class RoboGUI(QMainWindow):
             self.setWindowIcon(QIcon(icon_path))
 
         self.core = RoboCore()
+        self.scanner = DirectoryScanner()
         self._current_cfg = dict(DEFAULT_CFG)
         self._dialog = None
 
@@ -1563,7 +1866,7 @@ class RoboGUI(QMainWindow):
         self.stack.addWidget(self.presets_page)
 
         # Page 1 - Run
-        self.run_page = RunPage(self.core)
+        self.run_page = RunPage(self.core, self.scanner)
         self.run_page.go_back.connect(self._go_to_setup)
         self.stack.addWidget(self.run_page)
 
@@ -1624,6 +1927,8 @@ class RoboGUI(QMainWindow):
         cfg["retries"] = int(retries_text) if retries_text else None
         self.run_page.set_config(cfg)
         self.run_page.log.clear()
+        self.run_page.tabs.setCurrentWidget(self.run_page.preview)
+        self.run_page.preview.populate(cfg["src"], cfg["dst"], cfg)
         self.stack.setCurrentIndex(1)
 
     def _go_to_setup(self):
