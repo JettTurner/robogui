@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QIcon
 from core import RoboCore
+from version import __version__
 from presets import PresetsPage, DEFAULT_CFG
 
 
@@ -1381,7 +1382,7 @@ class RoboGUI(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("RoboGUI - Robocopy Manager")
+        self.setWindowTitle(f"RoboGUI - Robocopy Manager v{__version__}")
         self.resize(1050, 760)
         self.setStyleSheet(DARK_CSS)
 
